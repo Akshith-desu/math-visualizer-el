@@ -362,3 +362,34 @@ def fallback_parser(user_input, module_type='geometry'):
     
     # If no pattern matched, return original input
     return user_input
+
+def is_already_formatted(user_input, module_type):
+    """
+    Check if input is already in correct format
+    Returns True if no parsing needed
+    """
+    lower = user_input.lower().strip()
+    
+    if module_type == 'geometry':
+        # Check for function format: function_name(params)
+        valid_functions = [
+            'distance', 'midpoint', 'slope', 'line', 'area_triangle', 'collinear',
+            'circle', 'tangent_length', 'pythagoras', 'triangle', 'centroid', 'circumcenter',
+            'rectangle', 'square', 'circle_area', 'circle_circumference',
+            'cube', 'cuboid', 'cylinder', 'cone', 'sphere', 'hemisphere'
+        ]
+        
+        for func in valid_functions:
+            if lower.startswith(func + '('):
+                return True
+        
+        # Check for equation format (x^2 + y^2 = 25)
+        if '=' in user_input and ('^' in user_input or '**' in user_input):
+            return True
+    
+    elif module_type == 'algebra':
+        # Algebra equations are typically already formatted
+        if '=' in user_input:
+            return True
+    
+    return False

@@ -401,6 +401,8 @@ def process_inequality(latex_input):
     text = text.replace('\\lt', '<').replace('\\gt', '>')
     text = normalize_latex_input(text)
     
+    print(f"DEBUG INEQUALITY: Normalized text: '{text}'")
+    
     # Parse inequality
     inequality_obj = None
     op = None
@@ -412,7 +414,11 @@ def process_inequality(latex_input):
             lhs = parse_expression(parts[0].strip())
             rhs = parse_expression(parts[1].strip())
             
+            print(f"DEBUG INEQUALITY: LHS: {lhs}, RHS: {rhs}, Operator: {op}")
+            
             expr = lhs - rhs
+            
+            print(f"DEBUG INEQUALITY: Expression (lhs - rhs): {expr}")
             
             # Create inequality object
             if operator == '<':
@@ -429,6 +435,8 @@ def process_inequality(latex_input):
     if inequality_obj is None:
         raise Exception("Could not parse inequality")
     
+    print(f"DEBUG INEQUALITY: Inequality object: {inequality_obj}")
+    
     # Check if rational inequality
     numer, denom = expr.as_numer_denom()
     is_rational = denom != 1
@@ -437,21 +445,27 @@ def process_inequality(latex_input):
     solution_set = sp.EmptySet
     try:
         solution_set = solve_univariate_inequality(
-        inequality_obj,
-        x,
-        relational=False
-    )
-    except:
-    # MANUAL SIGN TESTING (CORRECT FALLBACK)
+            inequality_obj,
+            x,
+            relational=False
+        )
+        print(f"DEBUG INEQUALITY: SymPy solution: {solution_set}")
+    except Exception as e:
+        print(f"DEBUG INEQUALITY: SymPy solve failed: {e}")
+        # MANUAL SIGN TESTING (CORRECT FALLBACK)
         critical_pts = find_critical_points(expr, x)
+        print(f"DEBUG INEQUALITY: Critical points: {critical_pts}")
         solution_set = test_inequality_regions(expr, x, critical_pts, op)
-
+        print(f"DEBUG INEQUALITY: Manual solution: {solution_set}")
     
     # Get critical points
     critical_points = find_critical_points(expr, x)
     
     # Generate interval notation
     interval_notation = format_interval_notation(solution_set)
+    
+    print(f"DEBUG INEQUALITY: Final solution: {solution_set}")
+    print(f"DEBUG INEQUALITY: Interval notation: {interval_notation}")
     
     # Generate sign chart
     sign_chart = generate_sign_chart(expr, x, critical_points, op)
@@ -473,7 +487,6 @@ def process_inequality(latex_input):
             'solution': sp.latex(solution_set)
         }
     }
-
 def test_inequality_regions(expr, x, critical_points, operator):
     """Test inequality in regions defined by critical points"""
     if not critical_points:
@@ -644,53 +657,135 @@ def generate_inequality_plot_advanced(expr, x, solution_set, operator, critical_
     }
 
 def process_absolute_value(latex_input):
+    """Process absolute value equations - COMPLETELY FIXED"""
     x = sp.Symbol('x', real=True)
-    text = normalize_latex_input(latex_input)
-
-    # Normalize absolute value
-    text = text.replace('\\vert', '|').replace('\\lvert', '|').replace('\\rvert', '|')
+    
+    # STEP 1: Normalize absolute value notation FIRST
+    text = latex_input.replace('\\lvert', '|')
+    text = text.replace('\\rvert', '|')
+    text = text.replace('\\vert', '|')
+    
+    # STEP 2: Apply general normalization
+    text = normalize_latex_input(text)
+    
+    # STEP 3: Add implicit multiplication
     text = re.sub(r'(\d)([a-zA-Z])', r'\1*\2', text)
-
+    
     if '=' not in text:
         raise Exception("Absolute value equation must contain '='")
-
-    lhs, rhs = text.split('=', 1)
-
-    # Extract inside | |
-    match = re.search(r'\|(.*)\|', lhs)
+    
+    # STEP 4: Split equation
+    parts = text.split('=', 1)
+    lhs = parts[0].strip()
+    rhs = parts[1].strip()
+    
+    # STEP 5: Extract inside | | with better regex
+    # This handles |expr| anywhere in the lhs
+    match = re.search(r'\|([^|]+)\|', lhs)
     if not match:
-        raise Exception("Invalid absolute value format")
-
-    inner = sp.sympify(match.group(1))
-    rhs = sp.sympify(rhs)
-
-    # |A| = B  →  A = B OR A = -B
-    eq1 = sp.Eq(inner, rhs)
-    eq2 = sp.Eq(inner, -rhs)
-
-    sols = set()
+        raise Exception(f"Invalid absolute value format. Input: {lhs}")
+    
+    inner_expr_str = match.group(1).strip()
+    
+    print(f"DEBUG: Extracted inner expression: '{inner_expr_str}'")
+    print(f"DEBUG: RHS: '{rhs}'")
+    
+    # STEP 6: Parse expressions
+    try:
+        inner = sp.sympify(inner_expr_str)
+        rhs_val = sp.sympify(rhs)
+    except Exception as e:
+        raise Exception(f"Could not parse expression. Inner: '{inner_expr_str}', RHS: '{rhs}'. Error: {e}")
+    
+    print(f"DEBUG: Parsed inner: {inner}, Parsed rhs: {rhs_val}")
+    
+    # STEP 7: Check if rhs is negative (no solution)
+    try:
+        rhs_numeric = float(rhs_val.evalf())
+        if rhs_numeric < 0:
+            # No solution if |A| = negative number
+            return {
+                'type': 'algebra_absolute',
+                'equation': f"|{inner}| = {rhs_val}",
+                'solutions': [],
+                'plot_data': generate_plot_data_absolute(sp.Abs(inner), x, [], rhs_numeric),
+                'latex': {
+                    'equation': f"|{sp.latex(inner)}| = {sp.latex(rhs_val)}",
+                    'solutions': []
+                }
+            }
+    except:
+        pass
+    
+    # STEP 8: Solve |A| = B  →  A = B OR A = -B
+    eq1 = sp.Eq(inner, rhs_val)
+    eq2 = sp.Eq(inner, -rhs_val)
+    
+    sols = []
+    
+    # Solve both cases
     for eq in [eq1, eq2]:
         try:
-            sols.update(sp.solve(eq, x))
-        except:
-            pass
-
-    sols = [s for s in sols if s.is_real]
-
-    expr = inner - rhs
-    plot_data = generate_plot_data(expr, x, sols)
-
+            print(f"DEBUG: Solving {eq}")
+            solved = sp.solve(eq, x)
+            print(f"DEBUG: Solutions: {solved}")
+            
+            for s in solved:
+                # Ensure it's a real number
+                try:
+                    # Convert to float
+                    s_float = float(s.evalf())
+                    
+                    # Check if already in list (avoid duplicates)
+                    if not any(abs(s_float - existing) < 1e-10 for existing in sols):
+                        sols.append(s_float)
+                        print(f"DEBUG: Added solution: {s_float}")
+                except (TypeError, ValueError, AttributeError) as e:
+                    print(f"DEBUG: Could not convert {s} to float: {e}")
+                    # Check if it's actually real
+                    if hasattr(s, 'is_real') and s.is_real:
+                        try:
+                            s_val = complex(s)
+                            if abs(s_val.imag) < 1e-10:
+                                s_float = float(s_val.real)
+                                if not any(abs(s_float - existing) < 1e-10 for existing in sols):
+                                    sols.append(s_float)
+                                    print(f"DEBUG: Added solution: {s_float}")
+                        except:
+                            pass
+        except Exception as e:
+            print(f"DEBUG: Solve error for {eq}: {e}")
+            continue
+    
+    # STEP 9: Sort solutions
+    try:
+        sols = sorted(sols)
+    except:
+        pass
+    
+    print(f"DEBUG: Final solutions: {sols}")
+    
+    # STEP 10: Create absolute value expression for plotting
+    abs_expr = sp.Abs(inner)
+    
+    # STEP 11: Generate plot
+    try:
+        rhs_float = float(rhs_val.evalf())
+    except:
+        rhs_float = 0
+    
+    plot_data = generate_plot_data_absolute(abs_expr, x, sols, rhs_float)
+    
     return {
         'type': 'algebra_absolute',
-        'equation': f"|{inner}| = {rhs}",
-        'solutions': [str(s) for s in sols],
+        'equation': f"|{inner}| = {rhs_val}",
+        'solutions': [f"{s:.4f}" if isinstance(s, (int, float)) else str(s) for s in sols],
         'plot_data': plot_data,
         'latex': {
-            'equation': sp.latex(sp.Abs(inner)) + "=" + sp.latex(rhs),
-            'solutions': [sp.latex(s) for s in sols]
+            'equation': f"|{sp.latex(inner)}| = {sp.latex(rhs_val)}",
+            'solutions': [sp.latex(s) for s in sols] if sols else []
         }
     }
-
 
 def process_radical_equation(latex_input):
     """Process radical equations - FIXED"""
@@ -951,6 +1046,7 @@ def normalize_latex_input(latex_input):
     # \frac{a}{b} -> (a)/(b)
     text = re.sub(r'frac\{([^}]+)\}\{([^}]+)\}', r'((\1)/(\2))', text)
     
+    
     # Remove remaining braces for simple cases
     # But keep them for nested expressions
     # This is a simplified approach
@@ -961,8 +1057,13 @@ def normalize_latex_input(latex_input):
 
 def parse_expression(expr_string):
     """Parse expression with implicit multiplication - FIXED"""
+    expr_string = expr_string.strip()
+    
     # Handle exponents
     expr_string = expr_string.replace('^', '**')
+    
+    # REMOVE ALL WHITESPACE FIRST (this is the key fix)
+    expr_string = expr_string.replace(' ', '')
     
     # Add implicit multiplication
     # number followed by letter: 2x -> 2*x
@@ -978,14 +1079,50 @@ def parse_expression(expr_string):
     expr_string = re.sub(r'(\d)\(', r'\1*(', expr_string)
     
     # Handle fractions already converted
-    # Clean up double parentheses from frac conversion
     expr_string = expr_string.replace('((', '(').replace('))', ')')
     
     try:
         return sp.sympify(expr_string, evaluate=False)
     except Exception as e:
-        # Try again with evaluation
         try:
             return sp.sympify(expr_string)
         except:
             raise Exception(f"Could not parse: {expr_string}. Error: {str(e)}")
+        
+def generate_plot_data_absolute(abs_expr, x, solutions, rhs_value):
+    """Special plot for absolute value: shows |f(x)| and horizontal line y=rhs"""
+    x_vals = np.linspace(-10, 10, 500)
+    
+    # Evaluate |2x - 3|
+    f = sp.lambdify(x, abs_expr, 'numpy')
+    y_vals = f(x_vals)
+    y_vals = np.clip(y_vals, -100, 100)
+    
+    # Mark solution points
+    solution_points = []
+    for sol in solutions:
+        try:
+            sol_float = float(sol)
+            if -10 <= sol_float <= 10:
+                solution_points.append({
+                    'x': float(sol_float), 
+                    'y': float(rhs_value)  # Solutions are where |f(x)| = 5
+                })
+        except:
+            pass
+    
+    # Convert y_vals to JSON-safe list
+    y_list = []
+    for v in y_vals:
+        if np.isfinite(v):
+            y_list.append(float(v))
+        else:
+            y_list.append(None)
+    
+    return {
+        'x': x_vals.tolist(),
+        'y': y_list,
+        'solution_points': solution_points,
+        'horizontal_line': float(rhs_value),  # This tells frontend to draw y=5 line
+        'is_absolute_value': True  # Flag for frontend
+    }

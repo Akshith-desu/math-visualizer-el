@@ -63,28 +63,8 @@ function displayAlgebraResults(data, infoPanel, plotDiv) {
         return;
     }
     
-    // Advanced Inequality with interval notation and sign chart
+    // UPDATED: Inequality - REMOVED interval solution and sign chart
     if (data.type === 'algebra_inequality') {
-        let signChartHTML = '';
-        if (data.sign_chart && data.sign_chart.length > 0) {
-            signChartHTML = `
-                <table style="width:100%; border-collapse: collapse; margin-top: 10px;">
-                    <tr style="background: #f0f0f0; font-weight: bold;">
-                        <th style="padding: 8px; border: 1px solid #ddd;">Interval</th>
-                        <th style="padding: 8px; border: 1px solid #ddd;">Sign</th>
-                        <th style="padding: 8px; border: 1px solid #ddd;">In Solution?</th>
-                    </tr>
-                    ${data.sign_chart.map(row => `
-                        <tr style="background: ${row.satisfies ? '#e8f5e9' : '#ffebee'};">
-                            <td style="padding: 8px; border: 1px solid #ddd;">${row.interval}</td>
-                            <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold;">${row.sign}</td>
-                            <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${row.satisfies ? '✓' : '✗'}</td>
-                        </tr>
-                    `).join('')}
-                </table>
-            `;
-        }
-        
         infoPanel.innerHTML = `
             <div class="info-item">
                 <div class="info-label">Type:</div>
@@ -94,20 +74,10 @@ function displayAlgebraResults(data, infoPanel, plotDiv) {
                 <div class="info-label">Inequality:</div>
                 <div class="info-value" id="ineq-expr"></div>
             </div>
-            <div class="info-item">
-                <div class="info-label">Interval Solution:</div>
-                <div class="info-value" style="font-size: 1.1em; font-weight: bold; color: #667eea;">${data.interval_notation}</div>
-            </div>
             ${data.critical_points && data.critical_points.length > 0 ? `
             <div class="info-item">
                 <div class="info-label">Critical Points:</div>
-                <div class="info-value">${data.critical_points.map(cp => cp.toFixed(2)).join(', ')}</div>
-            </div>
-            ` : ''}
-            ${signChartHTML ? `
-            <div class="info-item">
-                <div class="info-label">Sign Chart:</div>
-                <div class="info-value">${signChartHTML}</div>
+                <div class="info-value" style="font-family: monospace; font-size: 16px;">${data.critical_points.map(cp => cp.toFixed(2)).join(', ')}</div>
             </div>
             ` : ''}
         `;
@@ -121,16 +91,13 @@ function displayAlgebraResults(data, infoPanel, plotDiv) {
             }
         }
         
-        // Plot inequality with number line
         plotInequalityAdvanced(data.plot_data, plotDiv);
         return;
     }
     
-    // Absolute value / Radical
+    // UPDATED: Absolute value / Radical - REMOVED solutions text
     if (data.type === 'algebra_absolute' || data.type === 'algebra_radical') {
         const typeLabel = data.type === 'algebra_absolute' ? 'Absolute Value' : 'Radical';
-        const solutions = Array.isArray(data.solutions) ? data.solutions : [];
-        const solutionText = solutions.length > 0 ? solutions.join(', ') : 'No real solutions';
         
         infoPanel.innerHTML = `
             <div class="info-item">
@@ -140,10 +107,6 @@ function displayAlgebraResults(data, infoPanel, plotDiv) {
             <div class="info-item">
                 <div class="info-label">Equation:</div>
                 <div class="info-value" id="special-eq"></div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Solutions:</div>
-                <div class="info-value">${solutionText}</div>
             </div>
         `;
         
@@ -156,7 +119,6 @@ function displayAlgebraResults(data, infoPanel, plotDiv) {
             }
         }
         
-        // Standard plot
         plotStandardAlgebra(data.plot_data, plotDiv, typeLabel);
         return;
     }
@@ -326,45 +288,81 @@ function plotInequalityAdvanced(plotData, plotDiv) {
         return;
     }
     
-    const traces = [
-        {
-            x: plotData.x || [],
-            y: plotData.y || [],
-            type: 'scatter',
-            mode: 'lines',
-            name: 'f(x)',
-            line: { color: '#667eea', width: 3 }
-        }
-    ];
+    const traces = [];
     
-    // Add shaded solution regions
+    // Main function curve
+    traces.push({
+        x: plotData.x || [],
+        y: plotData.y || [],
+        type: 'scatter',
+        mode: 'lines',
+        name: 'f(x)',
+        line: { color: '#667eea', width: 3 }
+    });
+    
+    // NEW: Create filled area for solution regions
     if (plotData.shaded_regions && Array.isArray(plotData.shaded_regions) && plotData.shaded_regions.length > 0) {
+        const shadeX = plotData.shaded_regions.map(p => p.x);
+        const shadeY = plotData.shaded_regions.map(p => p.y);
+        
         traces.push({
-            x: plotData.shaded_regions.map(p => p.x),
-            y: plotData.shaded_regions.map(p => p.y),
+            x: shadeX,
+            y: shadeY,
+            fill: 'tozeroy',
             type: 'scatter',
-            mode: 'markers',
+            mode: 'none',
             name: 'Solution Region',
-            marker: { size: 3, color: 'rgba(102, 126, 234, 0.3)' }
+            fillcolor: 'rgba(102, 126, 234, 0.3)',
+            showlegend: true
         });
     }
     
-    // Add critical points
+    // Add zero line (x-axis reference)
+    traces.push({
+        x: plotData.x,
+        y: Array(plotData.x.length).fill(0),
+        type: 'scatter',
+        mode: 'lines',
+        name: 'y = 0',
+        line: { color: 'black', width: 1, dash: 'dot' },
+        showlegend: false
+    });
+    
+    // Highlight critical points with larger markers
     if (plotData.critical_points && Array.isArray(plotData.critical_points) && plotData.critical_points.length > 0) {
         traces.push({
             x: plotData.critical_points,
             y: Array(plotData.critical_points.length).fill(0),
             mode: 'markers',
             name: 'Critical Points',
-            marker: { size: 10, color: 'red', symbol: 'circle' }
+            marker: { 
+                size: 14, 
+                color: '#f44336',
+                symbol: 'circle',
+                line: { color: 'white', width: 2 }
+            },
+            hovertemplate: 'x = %{x:.2f}<extra></extra>'
         });
     }
     
     const layout = {
-        title: `Inequality: Solution = ${plotData.solution || 'See above'}`,
-        xaxis: { title: 'x', zeroline: true },
-        yaxis: { title: 'y', zeroline: true },
-        showlegend: true
+        title: {
+            text: `Solution: ${plotData.solution || 'See graph'}`,
+            font: { size: 16, color: '#667eea', weight: 'bold' }
+        },
+        xaxis: { 
+            title: 'x', 
+            zeroline: true,
+            gridcolor: '#e0e0e0'
+        },
+        yaxis: { 
+            title: 'f(x)', 
+            zeroline: true,
+            gridcolor: '#e0e0e0'
+        },
+        showlegend: true,
+        hovermode: 'closest',
+        plot_bgcolor: '#f9f9f9'
     };
     
     Plotly.newPlot(plotDiv, traces, layout, { responsive: true });
@@ -376,30 +374,81 @@ function plotStandardAlgebra(plotData, plotDiv, title) {
         return;
     }
     
-    const traces = [{
+    const traces = [];
+    
+    // Main function curve
+    traces.push({
         x: plotData.x || [],
         y: plotData.y || [],
         type: 'scatter',
         mode: 'lines',
         line: { color: '#667eea', width: 3 },
-        name: 'f(x)'
-    }];
+        name: plotData.is_absolute_value ? '|f(x)|' : 'f(x)'
+    });
     
+    // For absolute value: Add horizontal line with enhanced styling
+    if (plotData.horizontal_line !== undefined) {
+        const xMin = plotData.x[0];
+        const xMax = plotData.x[plotData.x.length - 1];
+        
+        traces.push({
+            x: [xMin, xMax],
+            y: [plotData.horizontal_line, plotData.horizontal_line],
+            type: 'scatter',
+            mode: 'lines',
+            line: { color: '#ff6b6b', width: 2, dash: 'dash' },
+            name: `y = ${plotData.horizontal_line}`
+        });
+    }
+    
+    // Highlight solution points with larger, more visible markers
     if (plotData.solution_points && Array.isArray(plotData.solution_points) && plotData.solution_points.length > 0) {
         traces.push({
             x: plotData.solution_points.map(p => p.x),
             y: plotData.solution_points.map(p => p.y),
             mode: 'markers',
             name: 'Solutions',
-            marker: { size: 12, color: '#f44336', symbol: 'x' }
+            marker: { 
+                size: 16, 
+                color: '#f44336', 
+                symbol: 'x',
+                line: { color: 'white', width: 2 }
+            },
+            hovertemplate: 'Solution: x = %{x:.3f}<extra></extra>'
+        });
+        
+        // NEW: Add vertical lines from solutions to x-axis for clarity
+        plotData.solution_points.forEach((pt, idx) => {
+            traces.push({
+                x: [pt.x, pt.x],
+                y: [0, pt.y],
+                type: 'scatter',
+                mode: 'lines',
+                line: { color: '#f44336', width: 1, dash: 'dot' },
+                showlegend: false,
+                hoverinfo: 'skip'
+            });
         });
     }
     
     const layout = {
-        title: title || 'Graph',
-        xaxis: { title: 'x', zeroline: true },
-        yaxis: { title: 'y', zeroline: true },
-        showlegend: true
+        title: {
+            text: title || 'Graph',
+            font: { size: 16 }
+        },
+        xaxis: { 
+            title: 'x', 
+            zeroline: true,
+            gridcolor: '#e0e0e0'
+        },
+        yaxis: { 
+            title: 'y', 
+            zeroline: true,
+            gridcolor: '#e0e0e0'
+        },
+        showlegend: true,
+        hovermode: 'closest',
+        plot_bgcolor: '#f9f9f9'
     };
     
     Plotly.newPlot(plotDiv, traces, layout, { responsive: true });
