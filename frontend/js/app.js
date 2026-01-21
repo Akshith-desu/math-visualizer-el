@@ -1,5 +1,6 @@
 // Backend URL
-const BACKEND_URL = 'http://localhost:5000';
+// const BACKEND_URL = 'http://localhost:5000';
+const BACKEND_URL = 'https://math-visualizer-el.onrender.com';
 
 // Check backend status on load
 window.addEventListener('load', () => {
